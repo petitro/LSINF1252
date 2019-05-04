@@ -66,7 +66,22 @@ void *reverse(){
 
 void *count (){
   printf("Entré dans count\n");
-  return (NULL);
+  u_int8_t compteur (char *mdp,int consouvoye){
+  u_int8_t voy = 0 ;
+  u_int8_t cons = 0;
+  while (*mdp){
+    switch (*mdp){
+      case 'a': case'e' : case'i' : case'o' : case'u' : case'y':
+        voy++;
+        break;
+    }
+    *mdp++;
+    cons ++;
+}if(consouvoye==0){
+  return voy;
+}
+  return (cons-voy) ;
+}
 }
 
 int main (int argc, char **argv) {
