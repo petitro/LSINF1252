@@ -1,7 +1,7 @@
 /*
 *Pour conpiler écrire la ligne de code ci-dessous
-*  gcc -Wall -o getoptplagiat getoptplagiat.c -lpthread
-*
+*  gcc -Wall -Werror -o getoptplagiat getoptplagiat.c -lpthread
+*  
 *
 *
 */
@@ -53,6 +53,48 @@ void add(struct fichierIn *f){
     courant->next = NULL;
   }
 }
+void *count (){
+  printf("Entré dans count\n");
+  u_int8_t compteur (char *mdp,int consouvoye){
+  u_int8_t voy = 0 ;
+  u_int8_t cons = 0;
+  while (*mdp){
+    switch (*mdp){
+      case 'a': case'e' : case'i' : case'o' : case'u' : case'y':
+        voy++;
+        break;
+    }
+    *mdp++;
+    cons ++;
+}if(consouvoye==0){
+  return voy;
+}
+  return (cons-voy) ;
+}
+char recup[16] = malloc(sizeof(char)*16);
+sem_wait(&semMDPFull);
+pthread_mutex_lock(&mutMDP);
+recup=buffMDP[positionMDP];
+buffMDP[positionMDP]=NULL;
+positionMDP=positionMDP-1;
+pthread_mutex_unlock(&mutMDP);
+sem_post(&semMDPEmpty);
+int calc=compteur(recup);
+if(calc==max){
+	struct t_candidat *New=malloc(sizeof(t_candidat));
+	New->candidat=recup;
+	New->next=candidatHead;
+	candidatHead=candidat;
+}
+if(cal>max){
+	max=calc;
+	candidatHead=NULL;
+	struct t_candidat *New=malloc(sizeof(t_candidat));
+	New->candidat=recup;
+	New->next=NULL;
+	candidatHead=candidat;
+}
+}
 
 void *readFile(){
   printf("%s\n", "entrer dans readFile" );
@@ -80,25 +122,6 @@ void* reverse(void){
 	}
 }
 
-void *count (){
-  printf("Entré dans count\n");
-  u_int8_t compteur (char *mdp,int consouvoye){
-  u_int8_t voy = 0 ;
-  u_int8_t cons = 0;
-  while (*mdp){
-    switch (*mdp){
-      case 'a': case'e' : case'i' : case'o' : case'u' : case'y':
-        voy++;
-        break;
-    }
-    *mdp++;
-    cons ++;
-}if(consouvoye==0){
-  return voy;
-}
-  return (cons-voy) ;
-}
-}
 
 int main (int argc, char **argv) {
   int critere = VOYELLE;
