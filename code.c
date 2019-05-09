@@ -1,10 +1,11 @@
 /*
-*Pour conpiler écrire la ligne de code ci-dessous
-*  gcc -Wall -Werror -o getoptplagiat getoptplagiat.c -lpthread
-*  
-*
-*
+*programme : code.c
+*cours : LSINF1252
+*Enseignant : Olivier Bonaventure
+*Nom : Romain Petit (48271700), Antoine Percy (485017000)
+*Date : 10/05/19
 */
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,33 +14,65 @@
 #include <string.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include "reverse.h"
+#include <getopt.h> // include de la fonction getopt
+
 #define CONSONNE 1
 #define VOYELLE 0
 #define FILEERROR -1
 
-
+// création d'une structure pour liste chainée des fichiers in
 struct fichierIn {
   int fichier ;
   struct fichierIn *next;
 }t_fichierIn;
 
+// création d'une structure pour liste chainée mdp candidats
 struct candidat {
-  char candidat[16] ;
+  char *mdp ;
   struct candidat *next ;
 }t_candidat;
 
-struct candidat *candidatHead;//sert pour repérer le début de la liste ?
-struct candidat *candidatH
+struct candidat *candidatHead;
 struct fichierIn *head ;
 struct fichierIn *courant ;
 int max = 0 ;
+int critere = VOYELLE;
 pthread_mutex_t mutH ;
 pthread_mutex_t mutMDP;
 sem_t semHEmpty ;
 sem_t semHFull;
 sem_t semMDPEmpty;
 sem_t semMDPFull;
+u_int8_t **bufH;
+char **bufMDP;
+int positionH =-1;
+int positionMDP =-1;
+int nThread = 1;
+int StatusCount = 0;
+int outfile = 1;
 
+
+
+
+void addMDP(char *mdp){
+  struct candidat *cand ;
+  cand = malloc(sizeof(struct candidat));
+  cand->mdp = mdp;
+  cand->next = candidatHead;
+  candidatHead = cand;
+}
+
+void delMDP (){
+  struct candidat *courant;
+  while (candidatHead != NULL){
+    courant = candidatHead->next;
+    candidatHead->next = NULL;
+    free(candidatHead->mdp);
+    free(candidatHead);
+    candidatHead = courant;
+  }
+}
 
 void add(struct fichierIn *f){
   if (head == NULL){
@@ -53,83 +86,149 @@ void add(struct fichierIn *f){
     courant->next = NULL;
   }
 }
-void *count (){
-  printf("Entré dans count\n");
-  u_int8_t compteur (char *mdp,int consouvoye){
+
+u_int8_t nbreCV (char *mdp,int consouvoye){
   u_int8_t voy = 0 ;
   u_int8_t cons = 0;
-  while (*mdp){
-    switch (*mdp){
+  int i = 0;
+  while (*(mdp+i)){
+    switch (*(mdp+i)){
       case 'a': case'e' : case'i' : case'o' : case'u' : case'y':
         voy++;
         break;
     }
-    *mdp++;
     cons ++;
-}if(consouvoye==0){
+    i++;
+  }if(consouvoye==0){
   return voy;
-}
+  }
   return (cons-voy) ;
 }
-char recup[16] = malloc(sizeof(char)*16);
-sem_wait(&semMDPFull);
-pthread_mutex_lock(&mutMDP);
-recup=buffMDP[positionMDP];
-buffMDP[positionMDP]=NULL;
-positionMDP=positionMDP-1;
-pthread_mutex_unlock(&mutMDP);
-sem_post(&semMDPEmpty);
-int calc=compteur(recup);
-if(calc==max){
-	struct t_candidat *New=malloc(sizeof(t_candidat));
-	New->candidat=recup;
-	New->next=candidatHead;
-	candidatHead=candidat;
-}
-if(cal>max){
-	max=calc;
-	candidatHead=NULL;
-	struct t_candidat *New=malloc(sizeof(t_candidat));
-	New->candidat=recup;
-	New->next=NULL;
-	candidatHead=candidat;
-}
+
+void setH(u_int8_t *hash){
+  sem_wait(&semHEmpty);
+  pthread_mutex_lock(&mutH);
+  *(bufH+(positionH+1)*sizeof(u_int8_t))= hash;
+  positionH++;
+  pthread_mutex_unlock(&mutH);
+  sem_post(&semHFull);
 }
 
-void *readFile(){
-  printf("%s\n", "entrer dans readFile" );
+
+u_int8_t* getH(){
+  sem_wait(&semHFull);
+  pthread_mutex_lock(&mutH);
+  u_int8_t *hash;
+  hash = *(bufH+positionH*sizeof(u_int8_t));
+  positionH=positionH-1;
+  pthread_mutex_unlock(&mutH);
+  sem_post(&semHEmpty);
+  return(hash);
+}
+
+void setMDP(char *mdp){
+
+  sem_wait(&semMDPEmpty);
+  pthread_mutex_lock(&mutMDP);
+  *(bufMDP+(positionMDP+1)*sizeof(char))=mdp;
+  positionMDP=positionMDP+1;
+  pthread_mutex_unlock(&mutMDP);
+  sem_post(&semMDPFull);
+}
+
+char* getMDP(){
+  sem_wait(&semMDPFull);
+  pthread_mutex_lock(&mutMDP);
+  char *mdp;
+  mdp = *(bufMDP+positionMDP*sizeof(char));
+  positionMDP=positionMDP-1;
+  pthread_mutex_unlock(&mutMDP);
+  sem_post(&semMDPEmpty);
+  return(mdp);
+}
+
+void printMDP(){
+    struct candidat *runner;
+    int z;
+    char *n = "\n";
+    runner=candidatHead;
+    while(runner!=NULL){
+    z=write(outfile,(void*) (runner->mdp),strlen(runner->mdp));
+    if(z==-1){
+        printf("erreur write");
+    }
+    z=write(outfile,(void*) n,strlen(n));
+    if(z==-1){
+        printf("erreur write");
+    }
+    runner=runner->next;
+    }
+}
+
+void *readFile(void *arg){
+  struct fichierIn *file = head;
+  int i = 0;
+  u_int8_t *hash;
+  hash = (u_int8_t *) malloc (sizeof(u_int8_t)*32);
+  while (file != NULL){
+    while (read(file->fichier, (void *) &(*(hash+i)), sizeof(u_int8_t))>0){
+      if (i==31){
+        setH(hash);
+        i=0;
+        hash = (u_int8_t *) malloc (sizeof(u_int8_t)*32);
+      }
+      else {
+        i++;
+      }
+    }
+    file = file->next;
+    free(head);
+    head =file;
+  }
   return(NULL);
 }
-void* reverse(void){
-	printf("Entrée dans reverse\n");
-	while(true){
-		sem_wait(&semHFull);
-		pthread_mutex_lock(&mutH);
-		uint8_t *hash = bufH[positionH];
-		bufH[positionH]=NULL;
-		positionH=positionH-1;
-		pthread_mutex_unlock(&mutH);
-		sem_post(&semHEmpty);
-		
-		char mot[16] = malloc(sizeof(char)*16);
-		bool=reversehash(hash,mot,16);
-		sem_wait(&semMDPEmpty);
-		pthread_mutex_lock(&mutMDP);
-		buffMDP[positionMDP]=mot;
-		positionMDP=positionMDP+1;
-		pthread_mutex_unlock(&mutMDP);
-		sem_post(&semMDPFull);
-	}
+
+void *reverse(void *arg){
+  u_int8_t *hash = NULL;
+  bool revHok;
+	while((hash = getH())!= NULL){
+    char *mdp;
+    mdp = (char *)malloc(sizeof(char)*16);
+		revHok=reversehash(hash,mdp,16);
+    if (revHok == true){
+      setMDP(mdp);
+    }
+    else free(mdp);
+    free(hash);
+  }
+  return(NULL);
 }
 
+void *count (void *arg){
+  char *mdp = NULL ;
+  while ((mdp = getMDP())!= NULL){
+    int n = nbreCV(mdp, critere );
+    if (n == max){
+      addMDP(mdp);
+    }
+    else if(n>max){
+      delMDP();
+      addMDP(mdp);
+      max=n;
+    }
+    else {
+      free(mdp);
+    }
+  }
+  return(NULL);
+}
 
 int main (int argc, char **argv) {
-  int critere = VOYELLE;
-  int nThread = 1;
   int c;
-  int outfile = 1;
-  int debutFichier = 2 ;
+  int debutFichier = 1 ;
   int err =0 ;
+  extern char * optarg;
+  extern int opterr;
 
 
   opterr = 0;
@@ -138,6 +237,7 @@ int main (int argc, char **argv) {
     switch (c)
       {
       case 't':
+        debutFichier ++;
         debutFichier ++;
         nThread = atoi(optarg);
         break;
@@ -152,6 +252,7 @@ int main (int argc, char **argv) {
           printf ("Vous avez rentrer un mauvais argument ou un mauvais nom de fichier");
           return (1);
         }
+        debutFichier ++;
         break;
       case '?':
         max = 10;
@@ -168,6 +269,7 @@ int main (int argc, char **argv) {
     if (f == NULL){
       exit(EXIT_FAILURE);
     }
+    printf("%s\n", argv[i] );
     f->fichier = open(argv[i], O_RDONLY);
     if (f->fichier == -1){
       printf("Impossible d'accéder au fichier : %s \n", argv[i]);
@@ -177,6 +279,9 @@ int main (int argc, char **argv) {
     f->next = NULL;
     add(f);
   }
+
+  bufH =(u_int8_t **) malloc(nThread*sizeof(u_int8_t));
+  bufMDP = (char **) malloc(nThread*sizeof(char));
 
   err = sem_init(&semHEmpty, 0 , nThread);
   err =sem_init(&semHFull, 0 , 0);
@@ -194,46 +299,47 @@ int main (int argc, char **argv) {
      printf("err = mutMDP\n");
      exit(EXIT_FAILURE);
   }
+
   pthread_t T_read ;
   pthread_t T_calcul[nThread];
   pthread_t T_compteur;
 
-  err = pthread_create(&T_compteur, NULL, &count, NULL);
-  if (err != 0){
-     printf("err = T_count \n");
-     exit(EXIT_FAILURE);
-  }
-
-  err = pthread_create(&T_read , NULL, &readFile, NULL);
+  err = pthread_create(&T_read , NULL, readFile, NULL);
   if (err != 0){
      printf("err = T_read\n");
      exit(EXIT_FAILURE);
   }
 
+  err = pthread_create(&T_compteur, NULL, count, NULL);
+  if (err != 0){
+     printf("err = T_count \n");
+     exit(EXIT_FAILURE);
+  }
+
   for (int i=0 ; i<nThread; i++){
-    err = pthread_create(&T_calcul[i] , NULL, &reverse, NULL);
+    err = pthread_create(&T_calcul[i] , NULL, reverse, NULL);
     if (err != 0){
        printf("err = T_calcul %d\n" , i);
        exit(EXIT_FAILURE);
     }
   }
-
-  for (int i = 0; i<10000000; i++){
-
-  }
-
+  printf("%s\n","ici" );
   err = pthread_join(T_read,NULL);
   if (err != 0){
      printf("err = T_read join  %d\n", err);
      exit(EXIT_FAILURE);
   }
 
-  err = pthread_join(T_compteur,NULL);
-  if (err != 0){
-     printf("err = T_compteur join \n");
-     fprintf(stderr, "%s: %s\n", "join de T_compteur", strerror(err));
-     exit(EXIT_FAILURE);
+  while (positionH != -1){}
+  pthread_mutex_lock(&mutH);
+  for (int i =0 ; i<nThread ; i++){
+    *(bufH+i*sizeof(u_int8_t)) = NULL;
   }
+  for (int i =0 ; i< nThread ; i++){
+    sem_post(&semHFull);
+    positionH++;
+  }
+  pthread_mutex_unlock(&mutH);
 
   for (int i=0 ; i<nThread; i++){
     err = pthread_join(T_calcul[i] , NULL);
@@ -241,6 +347,23 @@ int main (int argc, char **argv) {
        printf("err = T_calcul %d join %d\n" , i, err);
        exit(EXIT_FAILURE);
     }
+  }
+
+  while(positionMDP != -1){}
+  pthread_mutex_lock(&mutMDP);
+  for (int i =0 ; i<nThread ; i++){
+    *(bufH+i*sizeof(char)) = NULL;
+  }
+  sem_post(&semMDPFull);
+  positionH++;
+  pthread_mutex_unlock(&mutMDP);
+
+  err = pthread_join(T_compteur,NULL);
+  printf("ici1\n");
+  if (err != 0){
+     printf("err = T_compteur join \n");
+     fprintf(stderr, "%s: %s\n", "join de T_compteur", strerror(err));
+     exit(EXIT_FAILURE);
   }
 
   err = pthread_mutex_destroy (&mutH);
@@ -261,14 +384,20 @@ int main (int argc, char **argv) {
   err = sem_destroy(&semHEmpty);
 
 
-
-  //close(outfile);
+  printMDP();
+  delMDP();
+  printf("%s\n","ok" );
+  if (outfile != 1){
+    close(outfile);
+  }
+  printf("ok");
   while (head != NULL){
     printf("%d\n", head->fichier );
     courant = head->next ;
     free(head);
     head = courant;
   }
+  printf("%s\n","ok" );
   printf("%s\n", "fini" );
   return 0;
 }
