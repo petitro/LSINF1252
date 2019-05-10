@@ -52,9 +52,16 @@ int nThread = 1;
 int StatusCount = 0;
 int outfile = 1;
 
+//--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Ici nous trouver les fonctions qui gère la liste chainée qui classe nos mots de passe ainsi que la fonction qui compte nos voyelles
 
 
-
+/*
+ * 
+ * Fonction permettant d'ajouter mdp a la liste des candidats
+ * 
+ * 
+ */
 void addMDP(char *mdp){
   struct candidat *cand ;
   cand = malloc(sizeof(struct candidat));
@@ -63,6 +70,32 @@ void addMDP(char *mdp){
   candidatHead = cand;
 }
 
+ 
+ /*
+ * 
+ * Fonction retournant le nombre d'occurences de consonnes si 
+ * consouvoye=1 et de voyelles si consouvoye=0 dans le mdp passe en
+ * argument
+ */
+u_int8_t nbreCV (char *mdp,int consouvoye){
+  u_int8_t voy = 0 ;
+  u_int8_t cons = 0;
+  int i = 0;
+  while (*(mdp+i)){
+    switch (*(mdp+i)){
+      case 'a': case'e' : case'i' : case'o' : case'u' : case'y':
+        voy++;
+        break;
+    }
+    cons ++;
+    i++;
+  }
+  if(consouvoye==0){
+	return voy;
+  }
+  return (cons-voy) ;
+}
+ 
 void delMDP (){
   struct candidat *courant;
   while (candidatHead != NULL){
@@ -73,7 +106,27 @@ void delMDP (){
     candidatHead = courant;
   }
 }
+ 
 
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//Dans cette section de code nous trouvons les fonctions gérants 
+//la liste chainée de nos fichier_in 
+
+ /*
+ * 
+ * Fonction supprimant la liste des candidats utile si on trouve un mot
+ * avec plus d'occurences que ceux dans la liste
+ * 
+ */
+
+
+/*
+ * 
+ * Cette fonction crée une structure fichierIn et 
+ * l'ajoute à la suite de la liste de fichierIn
+ * 
+ */
 void add(struct fichierIn *f){
   if (head == NULL){
     head = f;
@@ -87,24 +140,14 @@ void add(struct fichierIn *f){
   }
 }
 
-u_int8_t nbreCV (char *mdp,int consouvoye){
-  u_int8_t voy = 0 ;
-  u_int8_t cons = 0;
-  int i = 0;
-  while (*(mdp+i)){
-    switch (*(mdp+i)){
-      case 'a': case'e' : case'i' : case'o' : case'u' : case'y':
-        voy++;
-        break;
-    }
-    cons ++;
-    i++;
-  }if(consouvoye==0){
-  return voy;
-  }
-  return (cons-voy) ;
-}
 
+/*
+ * 
+ * Fonction ajoutant l'argement pointuer vers un *hash au buffer stockant 
+ * les hashs
+ * 
+ *  
+ */
 void setH(u_int8_t *hash){
   sem_wait(&semHEmpty);
   pthread_mutex_lock(&mutH);
@@ -114,7 +157,12 @@ void setH(u_int8_t *hash){
   sem_post(&semHFull);
 }
 
-
+/*
+ * 
+ * Fonction retirant un pointeur *hash du buffer des hashs et le retourne, 
+ * si les Threads de calcul doivent s'arreter la fonction retourne NULL
+ * 
+ */
 u_int8_t* getH(){
   sem_wait(&semHFull);
   pthread_mutex_lock(&mutH);
@@ -125,9 +173,13 @@ u_int8_t* getH(){
   sem_post(&semHEmpty);
   return(hash);
 }
-
+/*
+ * 
+ * Fonction ajoutant l'agument *mdp au buffer stockant les mdp
+ * 
+ *  
+ */
 void setMDP(char *mdp){
-
   sem_wait(&semMDPEmpty);
   pthread_mutex_lock(&mutMDP);
   *(bufMDP+(positionMDP+1)*sizeof(char))=mdp;
@@ -135,7 +187,13 @@ void setMDP(char *mdp){
   pthread_mutex_unlock(&mutMDP);
   sem_post(&semMDPFull);
 }
-
+/*
+ * 
+ * Fonction retirant un pointeur vers un mdp dans le buffer des mdp
+ * et puis va returner ce mdp, la fonction renvoit NULL si le thread compteur doit
+ * s'arrêter 
+ * 
+ */
 char* getMDP(){
   sem_wait(&semMDPFull);
   pthread_mutex_lock(&mutMDP);
@@ -146,7 +204,12 @@ char* getMDP(){
   sem_post(&semMDPEmpty);
   return(mdp);
 }
-
+/*
+ * 
+ * Fonction qui imprime les mdp candidats sur la sortie standard si
+ * outfile=1 et dans un fichier si outfile est different de 1
+ * 
+ */
 void printMDP(){
     struct candidat *runner;
     int z;
@@ -164,7 +227,13 @@ void printMDP(){
     runner=runner->next;
     }
 }
-
+/*
+ * 
+ * Fonction d'exécution du thread lecteur, son but parcourir 
+ * tous les fichiers binaire entré en argument et en extraire 
+ * tous les hashs. Il a fini sa tache quand il a lu tous les fichiers 
+ * 
+ */
 void *readFile(void *arg){
   struct fichierIn *file = head;
   int i = 0;
@@ -187,13 +256,18 @@ void *readFile(void *arg){
   }
   return(NULL);
 }
-
+/*
+ * 
+ * Fonction qui recupere un hash (en appelant getH) dans le premier buffer et qui le
+ * reverse pour ensuite le placer dans le buffer des mdp (en appelant setMDP())
+ * 
+ */
 void *reverse(void *arg){
   u_int8_t *hash = NULL;
   bool revHok;
 	while((hash = getH())!= NULL){
     char *mdp;
-    mdp = (char *)malloc(sizeof(char)*16);
+    mdp = (char *)malloc(sizeof(char)*17);
 		revHok=reversehash(hash,mdp,16);
     if (revHok == true){
       setMDP(mdp);
@@ -203,7 +277,15 @@ void *reverse(void *arg){
   }
   return(NULL);
 }
-
+/*
+ * 
+ * Fonction comptant le nombre d'occurences d'un mdp candidat via 
+ * la méthode nbreCV et qui si un nouveau max d'occurences  est trouvé
+ * va vider la liste des candidats et l'ajouter ou l'ajoutera simplement 
+ * si meme nombre d occurences que ceux deja dans la liste et si 
+ * inferieure au max le mot est supprime
+ * 
+ */
 void *count (void *arg){
   char *mdp = NULL ;
   while ((mdp = getMDP())!= NULL){
@@ -232,7 +314,10 @@ int main (int argc, char **argv) {
 
 
   opterr = 0;
-
+ /*
+  * Boucle While de lecture de nos arguments grâce à la fonction getopt
+  * 
+  */
   while ((c = getopt (argc, argv, "t:co:")) != -1)
     switch (c)
       {
@@ -262,7 +347,7 @@ int main (int argc, char **argv) {
 
   printf ("critere = %d, nThread = %d, test output = %d, max =%d \n",
           critere, nThread, outfile, max);
-
+  // boucle d'ouverture des fichiers d'entrée pour vérifier qu'ils sont valables.
   for (int i = debutFichier; i < argc; i++){
     struct fichierIn *f ;
     f = (struct fichierIn *)malloc(sizeof(struct fichierIn));
@@ -282,12 +367,15 @@ int main (int argc, char **argv) {
 
   bufH =(u_int8_t **) malloc(nThread*sizeof(u_int8_t));
   bufMDP = (char **) malloc(nThread*sizeof(char));
+  
+  //initiation de nos 4 sémaphores 2 par section critique : les buffers
 
   err = sem_init(&semHEmpty, 0 , nThread);
   err =sem_init(&semHFull, 0 , 0);
   err =sem_init(&semMDPEmpty, 0 , nThread);
   err =sem_init(&semMDPFull, 0 , 0);
-
+	
+	// initiation de nos 2 mutex, 1 par section critique
   err = pthread_mutex_init(&mutH, NULL);
   if (err != 0){
      printf("err = mutH\n");
@@ -299,6 +387,8 @@ int main (int argc, char **argv) {
      printf("err = mutMDP\n");
      exit(EXIT_FAILURE);
   }
+  
+  //initiation et création de nos threads
 
   pthread_t T_read ;
   pthread_t T_calcul[nThread];
@@ -323,7 +413,10 @@ int main (int argc, char **argv) {
        exit(EXIT_FAILURE);
     }
   }
-  printf("%s\n","ici" );
+  /* attente de la fin du thread T_read, si celui ci est fini et que positionH = -1
+   * nous pouvons arrêter les T_calcul. On leur fait passer le message de s'arrêter
+   * en metant à NULL toute les cases de notre buffer 
+   */
   err = pthread_join(T_read,NULL);
   if (err != 0){
      printf("err = T_read join  %d\n", err);
@@ -341,6 +434,10 @@ int main (int argc, char **argv) {
   }
   pthread_mutex_unlock(&mutH);
 
+	/*
+	 * Attente de la fin de nos T_calcul, si ceux ci sont finis et que positionMDP == -1
+	 * Nous pouvons arreter l'execution du T_compteur 
+	 */ 
   for (int i=0 ; i<nThread; i++){
     err = pthread_join(T_calcul[i] , NULL);
     if (err != 0){
@@ -352,19 +449,25 @@ int main (int argc, char **argv) {
   while(positionMDP != -1){}
   pthread_mutex_lock(&mutMDP);
   for (int i =0 ; i<nThread ; i++){
-    *(bufH+i*sizeof(char)) = NULL;
+    *(bufMDP+i*sizeof(char)) = NULL;
   }
   sem_post(&semMDPFull);
-  positionH++;
+  positionMDP++;
   pthread_mutex_unlock(&mutMDP);
-
+  
+  //Attente de la fin de nos threads de comptage
+  
   err = pthread_join(T_compteur,NULL);
-  printf("ici1\n");
+  
   if (err != 0){
      printf("err = T_compteur join \n");
      fprintf(stderr, "%s: %s\n", "join de T_compteur", strerror(err));
      exit(EXIT_FAILURE);
   }
+  //libère la mémoire réservé par nos buffers
+  free(bufH);
+  free(bufMDP);
+  // Destruction des sémaphores et des mutex
 
   err = pthread_mutex_destroy (&mutH);
   if (err != 0){
@@ -383,21 +486,22 @@ int main (int argc, char **argv) {
   err =sem_destroy(&semHFull);
   err = sem_destroy(&semHEmpty);
 
-
-  printMDP();
-  delMDP();
-  printf("%s\n","ok" );
+	
+  printMDP(); //impression des MDP avec le plus d'occurence de voyelle ou consonne 
+  delMDP(); //Supprime la liste et libère la mémoire
+  
+  
   if (outfile != 1){
     close(outfile);
   }
-  printf("ok");
+	//suppression de la liste de fichier si ceux si ne sont pas encore supprimer
   while (head != NULL){
     printf("%d\n", head->fichier );
     courant = head->next ;
     free(head);
     head = courant;
   }
-  printf("%s\n","ok" );
+  
   printf("%s\n", "fini" );
   return 0;
 }
