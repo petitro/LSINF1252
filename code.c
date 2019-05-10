@@ -21,6 +21,8 @@
 #define VOYELLE 0
 #define FILEERROR -1
 
+//----------------------------------------------------------------------------------------------------
+
 // création d'une structure pour liste chainée des fichiers in
 struct fichierIn {
   int fichier ;
@@ -33,24 +35,34 @@ struct candidat {
   struct candidat *next ;
 }t_candidat;
 
-struct candidat *candidatHead;
-struct fichierIn *head ;
+struct candidat *candidatHead; //tête de notre liste 
+struct fichierIn *head ; //tête de notre liste de fichierIn
 struct fichierIn *courant ;
-int max = 0 ;
+int max = 0 ; // variable pour le nbre max d'occurence de voyelle 
 int critere = VOYELLE;
+
+//déclaration de nos mutex et sémaphores
 pthread_mutex_t mutH ;
 pthread_mutex_t mutMDP;
 sem_t semHEmpty ;
 sem_t semHFull;
 sem_t semMDPEmpty;
 sem_t semMDPFull;
+
+//Declaration de nos deux buffers
 u_int8_t **bufH;
 char **bufMDP;
+
+//déclaration de la position dans nos deux buffers, 
+//initialisé à -1 car il n'y a pas encore d'élemennt
 int positionH =-1;
 int positionMDP =-1;
-int nThread = 1;
+
+int nThread = 1; // Le nbre de Thread de calcul
 int StatusCount = 0;
-int outfile = 1;
+int outfile = 1; // fichier out, initialisé à 1 qui est la sortie standard, si -o en argument il sera changé
+
+
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Ici nous trouver les fonctions qui gère la liste chainée qui classe nos mots de passe ainsi que la fonction qui compte nos voyelles
@@ -72,7 +84,6 @@ void addMDP(char *mdp){
 
  
  /*
- * 
  * Fonction retournant le nombre d'occurences de consonnes si 
  * consouvoye=1 et de voyelles si consouvoye=0 dans le mdp passe en
  * argument
@@ -140,6 +151,11 @@ void add(struct fichierIn *f){
   }
 }
 
+//-----------------------------------------------------------------------------------------------------------------------------
+//Dans cette section nous trouvons les fonctions qui accèdent au buffer.
+//La technique utilisée ici (l'accès au buffer dans la conditon du while via des fonctions
+//m'a été expliqué par Hadrien Libioulle également en LSINF1252
+
 
 /*
  * 
@@ -204,6 +220,7 @@ char* getMDP(){
   sem_post(&semMDPEmpty);
   return(mdp);
 }
+
 /*
  * 
  * Fonction qui imprime les mdp candidats sur la sortie standard si
@@ -227,6 +244,8 @@ void printMDP(){
     runner=runner->next;
     }
 }
+
+
 /*
  * 
  * Fonction d'exécution du thread lecteur, son but parcourir 
@@ -238,22 +257,28 @@ void *readFile(void *arg){
   struct fichierIn *file = head;
   int i = 0;
   u_int8_t *hash;
-  hash = (u_int8_t *) malloc (sizeof(u_int8_t)*32);
+  int error = 1; 
   while (file != NULL){
-    while (read(file->fichier, (void *) &(*(hash+i)), sizeof(u_int8_t))>0){
-      if (i==31){
-        setH(hash);
-        i=0;
-        hash = (u_int8_t *) malloc (sizeof(u_int8_t)*32);
-      }
-      else {
-        i++;
-      }
-    }
+	do{
+		hash = (u_int8_t *) malloc (sizeof(u_int8_t)*32);
+		error = read(file->fichier, (void *) &(*(hash+i)), sizeof(u_int8_t)*32);
+		if(error > 0){
+		setH(hash);
+	}
+	else{
+		free(hash);	
+	}   
+	}
+    while (error > 0);
+		
+		
     file = file->next;
     free(head);
     head =file;
-  }
+
+    
+	}
+  
   return(NULL);
 }
 /*
@@ -365,8 +390,8 @@ int main (int argc, char **argv) {
     add(f);
   }
 
-  bufH =(u_int8_t **) malloc(nThread*sizeof(u_int8_t));
-  bufMDP = (char **) malloc(nThread*sizeof(char));
+  bufH =(u_int8_t **) malloc(nThread*sizeof(u_int8_t *));
+  bufMDP = (char **) malloc(nThread*sizeof(char *));
   
   //initiation de nos 4 sémaphores 2 par section critique : les buffers
 
@@ -467,6 +492,8 @@ int main (int argc, char **argv) {
   //libère la mémoire réservé par nos buffers
   free(bufH);
   free(bufMDP);
+  
+  
   // Destruction des sémaphores et des mutex
 
   err = pthread_mutex_destroy (&mutH);
@@ -501,7 +528,5 @@ int main (int argc, char **argv) {
     free(head);
     head = courant;
   }
-  
-  printf("%s\n", "fini" );
   return 0;
 }
